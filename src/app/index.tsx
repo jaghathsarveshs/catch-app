@@ -91,6 +91,31 @@ export default function HomeScreen() {
               </Text>
             </View>
           </Pressable>
+
+          {/* 4. Contraction Timer Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Contraction Timer - Log labor duration and interval spacing"
+            style={({ pressed }) => [
+              styles.button,
+              styles.timerButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => {
+              router.push('/contraction-timer');
+            }}>
+            <View style={styles.buttonTextContainer}>
+              <View style={styles.buttonHeaderRow}>
+                <Text style={styles.timerButtonText}>Contraction Timer</Text>
+                <View style={styles.timerBadge}>
+                  <Text style={styles.timerBadgeText}>LABOR LOG</Text>
+                </View>
+              </View>
+              <Text style={styles.timerSubtext}>
+                Log contraction duration & interval spacing between contractions
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
         {/* Footer info */}
@@ -267,6 +292,39 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   profileSubtext: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    lineHeight: 18,
+    fontWeight: '400',
+  },
+
+  /* Contraction Timer Button Styles */
+  timerButton: {
+    backgroundColor: '#111827',
+    borderWidth: 1.5,
+    borderColor: '#059669',
+  },
+  timerButtonText: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#34D399',
+    letterSpacing: 0.2,
+  },
+  timerBadge: {
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  timerBadgeText: {
+    color: '#34D399',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  timerSubtext: {
     fontSize: 13,
     color: '#9CA3AF',
     lineHeight: 18,

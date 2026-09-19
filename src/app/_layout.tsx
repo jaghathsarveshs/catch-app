@@ -16,6 +16,7 @@ export default function RootLayout() {
         <Stack.Screen name="emergency" />
         <Stack.Screen name="practice" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="contraction-timer" />
         <Stack.Screen name="explore" />
       </Stack>
     </ThemeProvider>
