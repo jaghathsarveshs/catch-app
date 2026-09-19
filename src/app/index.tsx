@@ -1,8 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View, Pressable, StatusBar, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 export default function HomeScreen() {
+  const router = useRouter();
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
@@ -29,7 +32,7 @@ export default function HomeScreen() {
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
-              // Navigation will be connected in future flow
+              router.push('/emergency');
             }}>
             <View style={styles.buttonTextContainer}>
               <View style={styles.buttonHeaderRow}>
@@ -54,7 +57,7 @@ export default function HomeScreen() {
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
-              // Navigation will be connected in future flow
+              router.push('/practice');
             }}>
             <View style={styles.buttonTextContainer}>
               <View style={styles.buttonHeaderRow}>
@@ -79,7 +82,7 @@ export default function HomeScreen() {
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
-              // Navigation will be connected in future flow
+              router.push('/profile');
             }}>
             <View style={styles.buttonTextContainer}>
               <Text style={styles.profileButtonText}>My Profile</Text>
