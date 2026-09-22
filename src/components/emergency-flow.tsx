@@ -32,7 +32,7 @@ const EMERGENCY_SEQUENCE: SequenceItem[] = [
     stepNumber: 1,
     totalSteps: 10,
     phase: 'BEFORE BIRTH',
-    text: 'Call for help immediately (102/108)',
+    text: 'Call for help immediately (102 or 108)',
     durationMs: 12000,
   },
   {
@@ -132,9 +132,9 @@ const EMERGENCY_SEQUENCE: SequenceItem[] = [
 
 const getSpeechText = (item: SequenceItem): string => {
   if (item.type === 'step') {
-    return item.text;
+    return item.text.replace(/\//g, ' or ');
   }
-  return `${item.phase}. ${item.title}. ${item.triggers.join('. ')}. ${item.responseRule}`;
+  return `${item.phase}. ${item.title}. ${item.triggers.join('. ')}. ${item.responseRule}`.replace(/\//g, ' or ');
 };
 
 export interface EmergencyFlowProps {
@@ -148,8 +148,11 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
   const [shakeFeedback, setShakeFeedback] = useState<string | null>(null);
 
   const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const currentItem = EMERGENCY_SEQUENCE[currentIndex];
-  const isLast = currentIndex === EMERGENCY_SEQUENCE.length - 1;
+  const isCompleted = currentIndex >= EMERGENCY_SEQUENCE.length;
+  const currentItem = !isCompleted ? EMERGENCY_SEQUENCE[currentIndex] : null;
+  const [secondsLeft, setSecondsLeft] = useState<number>(
+    currentItem ? Math.round(currentItem.durationMs / 1000) : 0
+  );
 
   // Visual shake / action detection flash feedback
   const triggerFeedback = useCallback((message: string) => {
@@ -167,14 +170,12 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
       return;
     }
 
-    // Immediately open phone dialer for 102
     try {
       await Linking.openURL('tel:102');
     } catch (err) {
       console.error('Failed to open dialer for 102:', err);
     }
 
-    // Concurrently fetch location & send SMS if emergency contact is configured
     try {
       const stored = await AsyncStorage.getItem('@catch_user_profile');
       if (stored) {
@@ -222,25 +223,48 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
 
   // Shared Action 1: Repeat current step & replay TTS
   const repeatCurrentStep = useCallback(() => {
+    if (isCompleted || !currentItem) return;
     triggerFeedback('⚡ Repeat Step (Single Shake)');
     Speech.stop();
     const textToSpeak = getSpeechText(currentItem);
     Speech.speak(textToSpeak, { rate: 0.88 });
     setTimerKey((prev) => prev + 1);
-  }, [currentItem, triggerFeedback]);
+  }, [currentItem, isCompleted, triggerFeedback]);
 
   // Shared Action 2: Go back to previous step
   const goBackStep = useCallback(() => {
     if (currentIndex > 0) {
       triggerFeedback('⚡ Go Back (Double Shake)');
+      Speech.stop();
       setCurrentIndex((prev) => prev - 1);
     } else {
       triggerFeedback('⚠️ Already at Step 1');
     }
   }, [currentIndex, triggerFeedback]);
 
+  // Shared Action 3: Advance to next step immediately
+  const goNextStep = useCallback(() => {
+    if (currentIndex < EMERGENCY_SEQUENCE.length) {
+      triggerFeedback('⏭ Next Step');
+      Speech.stop();
+      setCurrentIndex((prev) => prev + 1);
+    }
+  }, [currentIndex, triggerFeedback]);
+
+  // Restart sequence from beginning
+  const handleRestart = () => {
+    Speech.stop();
+    setCurrentIndex(0);
+    setTimerKey((prev) => prev + 1);
+  };
+
   // TTS Narration Effect: speaks once per step change
   useEffect(() => {
+    if (isCompleted || !currentItem) {
+      Speech.stop();
+      return;
+    }
+
     Speech.stop();
     const textToSpeak = getSpeechText(currentItem);
     Speech.speak(textToSpeak, {
@@ -250,21 +274,34 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
     return () => {
       Speech.stop();
     };
-  }, [currentIndex, currentItem]);
+  }, [currentIndex, currentItem, isCompleted]);
 
-  // Auto-advance timer (re-subscribes when timerKey or step changes)
+  // Live 1-Second Countdown Timer Effect
   useEffect(() => {
-    if (isLast) return;
+    if (isCompleted || !currentItem) return;
 
-    const timer = setTimeout(() => {
-      setCurrentIndex((prev) => prev + 1);
-    }, currentItem.durationMs);
+    const initialSecs = Math.round(currentItem.durationMs / 1000);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSecondsLeft(initialSecs);
 
-    return () => clearTimeout(timer);
-  }, [currentIndex, isLast, currentItem.durationMs, timerKey]);
+    const interval = setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(interval);
+          setCurrentIndex((curr) => curr + 1);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [currentIndex, currentItem, timerKey, isCompleted]);
 
   // Accelerometer Shake Detection (Single Shake = Repeat, Double Shake = Go Back)
   useEffect(() => {
+    if (isCompleted) return;
+
     let pendingShakeTimer: ReturnType<typeof setTimeout> | null = null;
     let cooldown = false;
 
@@ -274,11 +311,10 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
       if (cooldown) return;
 
       const totalG = Math.sqrt(x * x + y * y + z * z);
-      const SHAKE_THRESHOLD = 1.9; // Intentional shake threshold in Gs
+      const SHAKE_THRESHOLD = 1.9;
 
       if (totalG > SHAKE_THRESHOLD) {
         if (pendingShakeTimer) {
-          // Second shake within 1.4s -> DOUBLE SHAKE (Go Back)
           clearTimeout(pendingShakeTimer);
           pendingShakeTimer = null;
           cooldown = true;
@@ -289,7 +325,6 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
             cooldown = false;
           }, 800);
         } else {
-          // First shake -> start 1.4s detection window
           pendingShakeTimer = setTimeout(() => {
             pendingShakeTimer = null;
             cooldown = true;
@@ -308,7 +343,7 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
       if (pendingShakeTimer) clearTimeout(pendingShakeTimer);
       subscription.remove();
     };
-  }, [repeatCurrentStep, goBackStep]);
+  }, [repeatCurrentStep, goBackStep, isCompleted]);
 
   const handleBack = () => {
     Speech.stop();
@@ -319,6 +354,115 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
     }
   };
 
+  // Full-Screen Completion View
+  if (isCompleted) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
+
+        {/* Practice Mode Top Banner */}
+        {isPractice && (
+          <View style={styles.practiceBanner}>
+            <Text style={styles.practiceBannerText}>
+              PRACTICE MODE — No real calls will be made
+            </Text>
+          </View>
+        )}
+
+        {/* Shake / Action Toast */}
+        {shakeFeedback && (
+          <View style={[styles.shakeFeedbackBanner, isPractice && { top: 104 }]}>
+            <Text style={styles.shakeFeedbackText}>{shakeFeedback}</Text>
+          </View>
+        )}
+
+        {/* Top Header */}
+        <View style={styles.header}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back to Home"
+            style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed]}
+            onPress={handleBack}>
+            <Text style={styles.backButtonText}>← Home</Text>
+          </Pressable>
+
+          <Text style={styles.appName}>
+            {isPractice ? 'Catch Practice' : 'Catch Emergency'}
+          </Text>
+
+          <View style={styles.counterBadge}>
+            <Text style={styles.completedBadgeText}>COMPLETED</Text>
+          </View>
+        </View>
+
+        {/* Persistent Emergency Direct Action Buttons */}
+        <View style={styles.persistentEmergencyContainer}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isPractice ? 'Practice Ambulance Button' : 'Get an Ambulance - Dial 102'}
+            style={({ pressed }) => [styles.ambulanceButton, pressed && styles.buttonPressed]}
+            onPress={handleGetAmbulance}>
+            <Text style={styles.ambulanceButtonTitle}>🚑 Get an Ambulance</Text>
+            <Text style={styles.ambulanceButtonSub}>
+              {isPractice ? 'Simulate 102 Call' : 'Dials 102 + SMS Alert'}
+            </Text>
+          </Pressable>
+
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={isPractice ? 'Practice Doctor Button' : 'Talk to a Doctor - Dial 104'}
+            style={({ pressed }) => [styles.doctorButton, pressed && styles.buttonPressed]}
+            onPress={handleTalkToDoctor}>
+            <Text style={styles.doctorButtonTitle}>🩺 Talk to a Doctor</Text>
+            <Text style={styles.doctorButtonSub}>
+              {isPractice ? 'Simulate 104 Call' : 'Dials 104 Helpline'}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Full-Screen Completion Card */}
+        <View style={styles.mainContent}>
+          <View style={styles.completedCard}>
+            <View style={styles.completedBadgeIcon}>
+              <Text style={styles.completedIconText}>✓</Text>
+            </View>
+
+            <Text style={styles.completedTitle}>
+              {isPractice
+                ? 'Practice Complete'
+                : 'Guidance Complete — Continue supporting until help arrives'}
+            </Text>
+
+            <Text style={styles.completedSubtitle}>
+              {isPractice
+                ? 'Great job rehearsing the flow! You have completed all emergency steps and safety checks.'
+                : 'Keep the mother warm, calm, and supported. Ensure real emergency medical responders are on their way.'}
+            </Text>
+
+            <View style={styles.completionActionsContainer}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Restart Sequence"
+                style={({ pressed }) => [styles.restartButton, pressed && styles.buttonPressed]}
+                onPress={handleRestart}>
+                <Text style={styles.restartButtonText}>↺ Restart Sequence</Text>
+              </Pressable>
+
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Return to Home"
+                style={({ pressed }) => [styles.returnHomeButton, pressed && styles.buttonPressed]}
+                onPress={handleBack}>
+                <Text style={styles.returnHomeButtonText}>← Return to Home</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Active Flow Step View
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
@@ -332,7 +476,7 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
         </View>
       )}
 
-      {/* Shake / Feedback Confirmation Toast */}
+      {/* Shake / Action Toast */}
       {shakeFeedback && (
         <View style={[styles.shakeFeedbackBanner, isPractice && { top: 104 }]}>
           <Text style={styles.shakeFeedbackText}>{shakeFeedback}</Text>
@@ -354,9 +498,9 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
         </Text>
 
         <View style={styles.counterBadge}>
-          {currentItem.type === 'step' ? (
+          {currentItem!.type === 'step' ? (
             <Text style={styles.counterText}>
-              Step {currentItem.stepNumber} of {currentItem.totalSteps}
+              Step {currentItem!.stepNumber} of {currentItem!.totalSteps}
             </Text>
           ) : (
             <Text style={styles.warningBadgeText}>WARNING CARD</Text>
@@ -368,7 +512,7 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
       <View style={styles.persistentEmergencyContainer}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={isPractice ? "Practice Ambulance Button" : "Get an Ambulance - Dial 102"}
+          accessibilityLabel={isPractice ? 'Practice Ambulance Button' : 'Get an Ambulance - Dial 102'}
           style={({ pressed }) => [styles.ambulanceButton, pressed && styles.buttonPressed]}
           onPress={handleGetAmbulance}>
           <Text style={styles.ambulanceButtonTitle}>🚑 Get an Ambulance</Text>
@@ -379,7 +523,7 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
 
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={isPractice ? "Practice Doctor Button" : "Talk to a Doctor - Dial 104"}
+          accessibilityLabel={isPractice ? 'Practice Doctor Button' : 'Talk to a Doctor - Dial 104'}
           style={({ pressed }) => [styles.doctorButton, pressed && styles.buttonPressed]}
           onPress={handleTalkToDoctor}>
           <Text style={styles.doctorButtonTitle}>🩺 Talk to a Doctor</Text>
@@ -391,19 +535,19 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
 
       {/* Main Full-Screen Display Area */}
       <View style={styles.mainContent}>
-        {currentItem.type === 'step' ? (
+        {currentItem!.type === 'step' ? (
           <View style={styles.stepCard}>
             <View style={styles.phasePill}>
-              <Text style={styles.phasePillText}>{currentItem.phase}</Text>
+              <Text style={styles.phasePillText}>{currentItem!.phase}</Text>
             </View>
 
             <View style={styles.stepTextContainer}>
-              <Text style={styles.stepText}>{currentItem.text}</Text>
+              <Text style={styles.stepText}>{currentItem!.text}</Text>
             </View>
 
             <View style={styles.autoAdvanceIndicator}>
               <Text style={styles.autoAdvanceText}>
-                {isLast ? 'Sequence Complete' : `Auto-advancing in ${currentItem.durationMs / 1000}s…`}
+                Auto-advancing in {secondsLeft}s…
               </Text>
             </View>
           </View>
@@ -411,13 +555,13 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
           <View style={styles.warningCard}>
             <View style={styles.warningHeaderPill}>
               <Text style={styles.warningHeaderIcon}>⚠️</Text>
-              <Text style={styles.warningHeaderPillText}>{currentItem.phase}</Text>
+              <Text style={styles.warningHeaderPillText}>{currentItem!.phase}</Text>
             </View>
 
-            <Text style={styles.warningTitle}>{currentItem.title}</Text>
+            <Text style={styles.warningTitle}>{currentItem!.title}</Text>
 
             <ScrollView style={styles.triggersList} contentContainerStyle={styles.triggersListContent}>
-              {currentItem.triggers.map((trigger, idx) => (
+              {currentItem!.triggers.map((trigger, idx) => (
                 <View key={idx} style={styles.triggerRow}>
                   <Text style={styles.triggerBullet}>•</Text>
                   <Text style={styles.triggerText}>{trigger}</Text>
@@ -426,36 +570,26 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
             </ScrollView>
 
             <View style={styles.responseRuleBox}>
-              <Text style={styles.responseRuleText}>{currentItem.responseRule}</Text>
+              <Text style={styles.responseRuleText}>{currentItem!.responseRule}</Text>
             </View>
 
             <View style={styles.warningTimerPill}>
               <Text style={styles.warningTimerText}>
-                Staying on screen for 15s for critical safety…
+                Staying on screen for {secondsLeft}s for critical safety check…
               </Text>
             </View>
           </View>
         )}
       </View>
 
-      {/* Bottom Backup Control Buttons */}
+      {/* Bottom Backup Control Buttons (Go Back, Repeat, Next) */}
       <View style={styles.bottomControlsContainer}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Repeat current step"
-          style={({ pressed }) => [styles.controlButton, styles.repeatButton, pressed && styles.buttonPressed]}
-          onPress={repeatCurrentStep}>
-          <Text style={styles.controlButtonText}>↺ Repeat</Text>
-          <Text style={styles.controlSubtext}>1 Shake</Text>
-        </Pressable>
-
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back to previous step"
           disabled={currentIndex === 0}
           style={({ pressed }) => [
             styles.controlButton,
-            styles.goBackButton,
             currentIndex === 0 && styles.disabledButton,
             pressed && styles.buttonPressed,
           ]}
@@ -463,7 +597,25 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
           <Text style={[styles.controlButtonText, currentIndex === 0 && styles.disabledButtonText]}>
             ⏮ Go Back
           </Text>
-          <Text style={styles.controlSubtext}>2 Shakes</Text>
+          <Text style={styles.controlSubtext}>Double shake</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Repeat current step"
+          style={({ pressed }) => [styles.controlButton, styles.repeatButton, pressed && styles.buttonPressed]}
+          onPress={repeatCurrentStep}>
+          <Text style={styles.controlButtonText}>↺ Repeat</Text>
+          <Text style={styles.controlSubtext}>Single shake</Text>
+        </Pressable>
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Advance to next step"
+          style={({ pressed }) => [styles.controlButton, styles.nextButton, pressed && styles.buttonPressed]}
+          onPress={goNextStep}>
+          <Text style={styles.controlButtonText}>⏭ Next</Text>
+          <Text style={styles.controlSubtext}>Skip forward</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -532,6 +684,12 @@ const styles = StyleSheet.create({
   },
   warningBadgeText: {
     color: '#EF4444',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  completedBadgeText: {
+    color: '#10B981',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
@@ -765,9 +923,83 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+
+  /* Completion View Card */
+  completedCard: {
+    width: '100%',
+    maxWidth: 540,
+    backgroundColor: '#111827',
+    borderWidth: 1.5,
+    borderColor: '#1F2937',
+    borderRadius: 24,
+    padding: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  completedBadgeIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  completedIconText: {
+    color: '#10B981',
+    fontSize: 32,
+    fontWeight: '900',
+  },
+  completedTitle: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+    textAlign: 'center',
+    lineHeight: 32,
+    marginBottom: 12,
+  },
+  completedSubtitle: {
+    color: '#9CA3AF',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 28,
+  },
+  completionActionsContainer: {
+    width: '100%',
+    gap: 12,
+  },
+  restartButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  restartButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  returnHomeButton: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#374151',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  returnHomeButtonText: {
+    color: '#E5E7EB',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  /* Bottom Controls Styles */
   bottomControlsContainer: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     paddingHorizontal: 20,
     paddingBottom: 24,
     width: '100%',
@@ -780,19 +1012,19 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: '#374151',
     borderRadius: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   repeatButton: {
     borderColor: '#3B82F6',
   },
-  goBackButton: {
-    borderColor: '#374151',
+  nextButton: {
+    borderColor: '#10B981',
   },
   controlButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
     marginBottom: 2,
   },
@@ -808,6 +1040,7 @@ const styles = StyleSheet.create({
   disabledButtonText: {
     color: '#6B7280',
   },
+
   buttonPressed: {
     opacity: 0.8,
     transform: [{ scale: 0.98 }],

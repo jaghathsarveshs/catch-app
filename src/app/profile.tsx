@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 
 const STORAGE_KEY = '@catch_user_profile';
 
@@ -43,10 +44,36 @@ const DEFAULT_PROFILE: UserProfile = {
   hasPriorCSection: false,
 };
 
+const formatDateString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseDateString = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  const cleanStr = dateStr.trim();
+  if (cleanStr.includes('-')) {
+    const parts = cleanStr.split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      if (!isNaN(year) && !isNaN(month) && !isNaN(day)) {
+        return new Date(year, month, day);
+      }
+    }
+  }
+  const parsed = new Date(cleanStr);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+};
+
 export default function ProfileScreen() {
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   // Load saved profile data on mount
   useEffect(() => {
@@ -77,6 +104,17 @@ export default function ProfileScreen() {
 
   const updateField = <K extends keyof UserProfile>(key: K, value: UserProfile[K]) => {
     setProfile((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const handleDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+    }
+    if (event.type === 'set' || Platform.OS === 'ios') {
+      if (selectedDate) {
+        updateField('dueDate', formatDateString(selectedDate));
+      }
+    }
   };
 
   return (
@@ -130,13 +168,35 @@ export default function ProfileScreen() {
             {/* 1. Due Date */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Expected Due Date</Text>
-              <TextInput
-                style={styles.input}
-                value={profile.dueDate}
-                onChangeText={(val) => updateField('dueDate', val)}
-                placeholder="e.g. 2026-11-20 or DD/MM/YYYY"
-                placeholderTextColor="#6B7280"
-              />
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Select Expected Due Date"
+                style={({ pressed }) => [styles.inputPressable, pressed && styles.buttonPressed]}
+                onPress={() => setShowDatePicker((prev) => !prev)}>
+                <Text style={profile.dueDate ? styles.inputText : styles.placeholderText}>
+                  {profile.dueDate || 'Select Due Date'}
+                </Text>
+                <Text style={styles.calendarIcon}>📅</Text>
+              </Pressable>
+
+              {showDatePicker && (
+                <View style={Platform.OS === 'ios' ? styles.iosDatePickerContainer : styles.datePickerWrapper}>
+                  <DateTimePicker
+                    value={parseDateString(profile.dueDate)}
+                    mode="date"
+                    display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                    textColor="#FFFFFF"
+                    onChange={handleDateChange}
+                  />
+                  {Platform.OS === 'ios' && (
+                    <Pressable
+                      style={styles.iosDoneButton}
+                      onPress={() => setShowDatePicker(false)}>
+                      <Text style={styles.iosDoneButtonText}>Done</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
             </View>
 
             {/* 2. Blood Type Picker */}
@@ -373,6 +433,53 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 15,
     color: '#FFFFFF',
+  },
+  inputPressable: {
+    backgroundColor: '#1E293B',
+    borderWidth: 1,
+    borderColor: '#374151',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  inputText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  placeholderText: {
+    fontSize: 15,
+    color: '#6B7280',
+  },
+  calendarIcon: {
+    fontSize: 16,
+  },
+  datePickerWrapper: {
+    marginTop: 6,
+  },
+  iosDatePickerContainer: {
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: '#374151',
+    alignItems: 'center',
+  },
+  iosDoneButton: {
+    backgroundColor: '#2563EB',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 20,
+    marginTop: 10,
+    alignSelf: 'flex-end',
+  },
+  iosDoneButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   /* Blood Type Pill Selector */

@@ -116,6 +116,31 @@ export default function HomeScreen() {
               </Text>
             </View>
           </Pressable>
+
+          {/* 5. Go Premium Button */}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Go Premium - Unlock additional languages and multi-mother profiles"
+            style={({ pressed }) => [
+              styles.button,
+              styles.premiumButton,
+              pressed && styles.buttonPressed,
+            ]}
+            onPress={() => {
+              router.push('/paywall');
+            }}>
+            <View style={styles.buttonTextContainer}>
+              <View style={styles.buttonHeaderRow}>
+                <Text style={styles.premiumButtonText}>Go Premium</Text>
+                <View style={styles.premiumBadge}>
+                  <Text style={styles.premiumBadgeText}>UNLOCKED</Text>
+                </View>
+              </View>
+              <Text style={styles.premiumSubtext}>
+                Unlock additional language packs, unlimited rehearsals & multi-mother profiles
+              </Text>
+            </View>
+          </Pressable>
         </View>
 
         {/* Footer info */}
@@ -325,6 +350,39 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   timerSubtext: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    lineHeight: 18,
+    fontWeight: '400',
+  },
+
+  /* Go Premium Button Styles */
+  premiumButton: {
+    backgroundColor: '#111827',
+    borderWidth: 1.5,
+    borderColor: '#F59E0B',
+  },
+  premiumButtonText: {
+    fontSize: 19,
+    fontWeight: '700',
+    color: '#FBBF24',
+    letterSpacing: 0.2,
+  },
+  premiumBadge: {
+    backgroundColor: 'rgba(245, 158, 11, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(245, 158, 11, 0.3)',
+  },
+  premiumBadgeText: {
+    color: '#FBBF24',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+  },
+  premiumSubtext: {
     fontSize: 13,
     color: '#9CA3AF',
     lineHeight: 18,
