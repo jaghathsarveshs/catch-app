@@ -82,7 +82,7 @@ export default function HomeScreen() {
               pressed && styles.buttonPressed,
             ]}
             onPress={() => {
-              router.push('/profile');
+              router.push('/profiles');
             }}>
             <View style={styles.buttonTextContainer}>
               <Text style={styles.profileButtonText}>My Profile</Text>

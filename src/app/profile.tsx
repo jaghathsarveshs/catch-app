@@ -13,36 +13,16 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
-
-const STORAGE_KEY = '@catch_user_profile';
-
-const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const LANGUAGES = ['English', 'Tamil', 'Hindi'] as const;
-
-type Language = (typeof LANGUAGES)[number];
-
-export interface UserProfile {
-  dueDate: string;
-  bloodType: string;
-  hospitalName: string;
-  emergencyContactName: string;
-  emergencyContactPhone: string;
-  language: Language;
-  hasPriorCSection: boolean;
-}
-
-const DEFAULT_PROFILE: UserProfile = {
-  dueDate: '',
-  bloodType: 'O+',
-  hospitalName: '',
-  emergencyContactName: '',
-  emergencyContactPhone: '',
-  language: 'English',
-  hasPriorCSection: false,
-};
+import {
+  UserProfile,
+  DEFAULT_PROFILE_VALUES,
+  getProfileById,
+  saveProfile,
+  BLOOD_TYPES,
+  LANGUAGES,
+} from '@/lib/profile-storage';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -71,31 +51,53 @@ const parseDateString = (dateStr: string): Date => {
 
 export default function ProfileScreen() {
   const router = useRouter();
-  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
+  const { id } = useLocalSearchParams<{ id?: string }>();
+
+  const [profile, setProfile] = useState<Partial<UserProfile>>({
+    ...DEFAULT_PROFILE_VALUES,
+  });
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  // Load saved profile data on mount
+  const isEditing = Boolean(id && id !== 'new');
+
+  // Load profile data if editing existing id
   useEffect(() => {
-    async function loadProfile() {
+    async function loadTargetProfile() {
+      setLoading(true);
       try {
-        const stored = await AsyncStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored) as Partial<UserProfile>;
-          setProfile((prev) => ({ ...prev, ...parsed }));
+        if (id && id !== 'new') {
+          const existing = await getProfileById(id);
+          if (existing) {
+            setProfile(existing);
+          } else {
+            setProfile({ ...DEFAULT_PROFILE_VALUES, id: `profile_${Date.now()}` });
+          }
+        } else {
+          setProfile({ ...DEFAULT_PROFILE_VALUES });
         }
       } catch (e) {
-        console.error('Failed to load profile:', e);
+        console.error('Failed to load target profile:', e);
+      } finally {
+        setLoading(false);
       }
     }
-    loadProfile();
-  }, []);
+    loadTargetProfile();
+  }, [id]);
 
   const handleSave = async () => {
     try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(profile));
+      await saveProfile(profile);
       setSaveStatus('Profile saved successfully!');
-      setTimeout(() => setSaveStatus(null), 3000);
+      setTimeout(() => {
+        setSaveStatus(null);
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace('/profiles');
+        }
+      }, 800);
     } catch (e) {
       console.error('Failed to save profile:', e);
       Alert.alert('Error', 'Failed to save profile. Please try again.');
@@ -117,6 +119,17 @@ export default function ProfileScreen() {
     }
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading profile details...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
@@ -128,13 +141,13 @@ export default function ProfileScreen() {
           <View style={styles.headerRow}>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Back to Home"
+              accessibilityLabel="Back to Profiles"
               style={({ pressed }) => [styles.backButton, pressed && styles.buttonPressed]}
               onPress={() => {
                 if (router.canGoBack()) {
                   router.back();
                 } else {
-                  router.replace('/');
+                  router.replace('/profiles');
                 }
               }}>
               <Text style={styles.backButtonText}>← Back</Text>
@@ -144,7 +157,7 @@ export default function ProfileScreen() {
           </View>
 
           <View style={styles.titleSection}>
-            <Text style={styles.pageTitle}>My Profile</Text>
+            <Text style={styles.pageTitle}>{isEditing ? 'Edit Profile' : 'New Profile'}</Text>
             <Text style={styles.pageSubtitle}>
               Essential maternal & emergency details for bystander support
             </Text>
@@ -165,6 +178,18 @@ export default function ProfileScreen() {
           )}
 
           <View style={styles.formCard}>
+            {/* 0. Profile Name / Label */}
+            <View style={styles.fieldGroup}>
+              <Text style={styles.fieldLabel}>Profile Label / Name</Text>
+              <TextInput
+                style={styles.input}
+                value={profile.name || ''}
+                onChangeText={(val) => updateField('name', val)}
+                placeholder="e.g. Profile 1, Primary Profile, or Mother's Name"
+                placeholderTextColor="#6B7280"
+              />
+            </View>
+
             {/* 1. Due Date */}
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Expected Due Date</Text>
@@ -182,7 +207,7 @@ export default function ProfileScreen() {
               {showDatePicker && (
                 <View style={Platform.OS === 'ios' ? styles.iosDatePickerContainer : styles.datePickerWrapper}>
                   <DateTimePicker
-                    value={parseDateString(profile.dueDate)}
+                    value={parseDateString(profile.dueDate || '')}
                     mode="date"
                     display={Platform.OS === 'ios' ? 'spinner' : 'default'}
                     textColor="#FFFFFF"
@@ -203,7 +228,7 @@ export default function ProfileScreen() {
             <View style={styles.fieldGroup}>
               <Text style={styles.fieldLabel}>Blood Type</Text>
               <View style={styles.pillGrid}>
-                {BLOOD_TYPES.map((type) => {
+                {BLOOD_TYPES.map((type: string) => {
                   const isSelected = profile.bloodType === type;
                   return (
                     <Pressable
@@ -228,7 +253,7 @@ export default function ProfileScreen() {
               <Text style={styles.fieldLabel}>Nearest Hospital Name</Text>
               <TextInput
                 style={styles.input}
-                value={profile.hospitalName}
+                value={profile.hospitalName || ''}
                 onChangeText={(val) => updateField('hospitalName', val)}
                 placeholder="e.g. City General Hospital, Salem"
                 placeholderTextColor="#6B7280"
@@ -240,7 +265,7 @@ export default function ProfileScreen() {
               <Text style={styles.fieldLabel}>Emergency Contact Name</Text>
               <TextInput
                 style={styles.input}
-                value={profile.emergencyContactName}
+                value={profile.emergencyContactName || ''}
                 onChangeText={(val) => updateField('emergencyContactName', val)}
                 placeholder="e.g. Ramesh (Husband / Family Member)"
                 placeholderTextColor="#6B7280"
@@ -251,7 +276,7 @@ export default function ProfileScreen() {
               <Text style={styles.fieldLabel}>Emergency Contact Phone</Text>
               <TextInput
                 style={styles.input}
-                value={profile.emergencyContactPhone}
+                value={profile.emergencyContactPhone || ''}
                 onChangeText={(val) => updateField('emergencyContactPhone', val)}
                 placeholder="e.g. +91 9876543210"
                 placeholderTextColor="#6B7280"
@@ -292,7 +317,7 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <Switch
-                value={profile.hasPriorCSection}
+                value={Boolean(profile.hasPriorCSection)}
                 onValueChange={(val) => updateField('hasPriorCSection', val)}
                 trackColor={{ false: '#374151', true: '#DC2626' }}
                 thumbColor={profile.hasPriorCSection ? '#FFFFFF' : '#9CA3AF'}
@@ -325,6 +350,15 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0B1220',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: '#9CA3AF',
+    fontSize: 16,
   },
   scrollContent: {
     paddingHorizontal: 20,

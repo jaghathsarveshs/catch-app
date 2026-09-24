@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as Speech from 'expo-speech';
 import { Accelerometer } from 'expo-sensors';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getActiveProfile } from '@/lib/profile-storage';
 import * as Location from 'expo-location';
 
 type SequenceItem =
@@ -177,10 +177,9 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
     }
 
     try {
-      const stored = await AsyncStorage.getItem('@catch_user_profile');
-      if (stored) {
-        const profile = JSON.parse(stored);
-        const contactPhone = profile?.emergencyContactPhone?.trim();
+      const activeProfile = await getActiveProfile();
+      if (activeProfile) {
+        const contactPhone = activeProfile.emergencyContactPhone?.trim();
 
         if (contactPhone) {
           const { status } = await Location.requestForegroundPermissionsAsync();
@@ -197,7 +196,9 @@ export function EmergencyFlow({ isPractice = false }: EmergencyFlowProps) {
             }
           }
 
-          const smsText = `Emergency - need help. My location:${mapsUrl || ' Location unavailable'}`;
+          const profileName = activeProfile.name?.trim();
+          const subjectText = profileName ? `${profileName} needs help` : 'need help';
+          const smsText = `Emergency - ${subjectText}. My location:${mapsUrl || ' Location unavailable'}`;
           const smsUrl = `sms:${contactPhone}?body=${encodeURIComponent(smsText)}`;
           await Linking.openURL(smsUrl);
         }
