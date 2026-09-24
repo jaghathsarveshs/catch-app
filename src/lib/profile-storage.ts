@@ -7,6 +7,7 @@ export const OLD_STORAGE_KEY = '@catch_user_profile';
 export const BLOOD_TYPES = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
 export const LANGUAGES = ['English', 'Tamil', 'Hindi'] as const;
 export type Language = (typeof LANGUAGES)[number];
+export type SupportedLanguage = Language;
 
 export interface UserProfile {
   id: string;

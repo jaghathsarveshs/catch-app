@@ -23,6 +23,7 @@ import {
   BLOOD_TYPES,
   LANGUAGES,
 } from '@/lib/profile-storage';
+import { getPremiumStatus } from '@/lib/revenuecat';
 
 const formatDateString = (date: Date): string => {
   const year = date.getFullYear();
@@ -290,17 +291,41 @@ export default function ProfileScreen() {
               <View style={styles.langRow}>
                 {LANGUAGES.map((lang) => {
                   const isSelected = profile.language === lang;
+                  const isHindi = lang === 'Hindi';
                   return (
                     <Pressable
                       key={lang}
                       style={[styles.langButton, isSelected && styles.langButtonSelected]}
-                      onPress={() => updateField('language', lang)}>
+                      onPress={async () => {
+                        if (isHindi) {
+                          try {
+                            const isPremium = await getPremiumStatus();
+                            if (!isPremium) {
+                              Alert.alert(
+                                'Premium Feature',
+                                'The Hindi language pack is a Catch Premium feature. Upgrade to unlock Hindi guidance.',
+                                [
+                                  { text: 'Cancel', style: 'cancel' },
+                                  {
+                                    text: 'View Premium',
+                                    onPress: () => router.push('/paywall'),
+                                  },
+                                ]
+                              );
+                              return;
+                            }
+                          } catch (e) {
+                            console.error('Error checking premium for Hindi:', e);
+                          }
+                        }
+                        updateField('language', lang);
+                      }}>
                       <Text
                         style={[
                           styles.langButtonText,
                           isSelected && styles.langButtonTextSelected,
                         ]}>
-                        {lang}
+                        {lang} {isHindi ? '👑' : ''}
                       </Text>
                     </Pressable>
                   );

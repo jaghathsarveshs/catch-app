@@ -9,6 +9,18 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0B1220" />
+      {/* Top Header Row with Settings Icon */}
+      <View style={styles.topBarRow}>
+        <View style={{ width: 40 }} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Settings"
+          style={({ pressed }) => [styles.settingsButton, pressed && styles.buttonPressed]}
+          onPress={() => router.push('/settings')}>
+          <Text style={styles.settingsButtonIcon}>⚙️</Text>
+        </Pressable>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Header Section */}
         <View style={styles.header}>
@@ -159,11 +171,32 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0B1220',
   },
+  topBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  settingsButton: {
+    backgroundColor: '#1E293B',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#374151',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingsButtonIcon: {
+    fontSize: 16,
+  },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 24,
+    paddingTop: 16,
     paddingBottom: 32,
   },
   header: {

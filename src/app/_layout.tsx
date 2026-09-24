@@ -25,6 +25,7 @@ export default function RootLayout() {
         <Stack.Screen name="profiles" />
         <Stack.Screen name="contraction-timer" />
         <Stack.Screen name="paywall" />
+        <Stack.Screen name="settings" />
         <Stack.Screen name="explore" />
       </Stack>
     </ThemeProvider>
